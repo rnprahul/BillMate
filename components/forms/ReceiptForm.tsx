@@ -15,9 +15,9 @@ import {
   FileText, 
   Save, 
   Printer, 
-  Sparkles,
-  Search,
-  X
+  Sparkles, 
+  Search, 
+  X 
 } from 'lucide-react';
 import { 
   CURRENCIES, 
@@ -35,7 +35,6 @@ import {
   ReceiptSize, 
   ReceiptTemplate 
 } from '@/types';
-import { calculateReceiptTotals } from '@/lib/calculations/receipt';
 import { StorageService } from '@/lib/storage';
 import { useToast } from '@/components/providers/ToastProvider';
 import { Input } from '@/components/ui/Input';
@@ -43,267 +42,73 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 
 interface ReceiptFormProps {
-  initialReceipt?: Receipt | null;
-  onReceiptChange: (receipt: Receipt) => void;
+  receipt: Receipt;
+  onChange: (receipt: Receipt) => void;
+  onSave: () => void;
+  errors?: Record<string, string>;
 }
 
-export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProps) {
+export function ReceiptForm({ receipt, onChange, onSave, errors = {} }: ReceiptFormProps) {
   const router = useRouter();
-  const { success, error: showError, info } = useToast();
+  const { info, error: showError } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Saved customers & settings
   const [savedCustomers, setSavedCustomers] = useState<Customer[]>([]);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
-  // Form State
-  const [receiptId, setReceiptId] = useState<string>(initialReceipt?.id || 'rec-new');
-  const [receiptNumber, setReceiptNumber] = useState<string>(initialReceipt?.receiptNumber || 'REC-1001');
-  const [date, setDate] = useState<string>(initialReceipt?.date || '2026-08-30');
-  const [time, setTime] = useState<string>(initialReceipt?.time || '12:00');
-  const [currency, setCurrency] = useState<CurrencyCode>(initialReceipt?.currency || 'INR');
-  const [template, setTemplate] = useState<ReceiptTemplate>(initialReceipt?.template || 'modern');
-  const [size, setSize] = useState<ReceiptSize>(initialReceipt?.size || 'a4');
-
-  // Business State
-  const [businessName, setBusinessName] = useState(initialReceipt?.business?.name || '');
-  const [businessLogo, setBusinessLogo] = useState(initialReceipt?.business?.logo || '');
-  const [businessPhone, setBusinessPhone] = useState(initialReceipt?.business?.phone || '');
-  const [businessEmail, setBusinessEmail] = useState(initialReceipt?.business?.email || '');
-  const [businessWebsite, setBusinessWebsite] = useState(initialReceipt?.business?.website || '');
-  const [businessAddress, setBusinessAddress] = useState(initialReceipt?.business?.address || '');
-  const [businessCity, setBusinessCity] = useState(initialReceipt?.business?.city || '');
-  const [businessState, setBusinessState] = useState(initialReceipt?.business?.state || '');
-  const [businessPostalCode, setBusinessPostalCode] = useState(initialReceipt?.business?.postalCode || '');
-  const [businessGstin, setBusinessGstin] = useState(initialReceipt?.business?.gstin || '');
-
-  // Customer State
-  const [customerId, setCustomerId] = useState<string | undefined>(initialReceipt?.customer?.id);
-  const [customerName, setCustomerName] = useState(initialReceipt?.customer?.name || '');
-  const [customerPhone, setCustomerPhone] = useState(initialReceipt?.customer?.phone || '');
-  const [customerEmail, setCustomerEmail] = useState(initialReceipt?.customer?.email || '');
-  const [customerAddress, setCustomerAddress] = useState(initialReceipt?.customer?.address || '');
-  const [customerCity, setCustomerCity] = useState(initialReceipt?.customer?.city || '');
-  const [customerState, setCustomerState] = useState(initialReceipt?.customer?.state || '');
-  const [customerPostalCode, setCustomerPostalCode] = useState(initialReceipt?.customer?.postalCode || '');
-
-  // Items State
-  const [items, setItems] = useState<ReceiptItem[]>(
-    initialReceipt?.items || [
-      {
-        id: 'item-default-1',
-        name: 'Professional Consulting Services',
-        description: 'Design & technical implementation consulting',
-        quantity: 1,
-        unitPrice: 5000,
-        taxRate: 18,
-        total: 5000,
-      },
-    ]
-  );
-
-  // Discount & Tax State
-  const [discountType, setDiscountType] = useState<DiscountType>(initialReceipt?.discountType || 'percentage');
-  const [discountValue, setDiscountValue] = useState<number>(initialReceipt?.discountValue || 0);
-
-  // GST State
-  const [isGstEnabled, setIsGstEnabled] = useState<boolean>(initialReceipt?.isGstEnabled ?? true);
-  const [gstMode, setGstMode] = useState<GstCalculationMode>(initialReceipt?.gstMode || 'exclusive');
-  const [gstType, setGstType] = useState<GstType>(initialReceipt?.gstType || 'cgst_sgst');
-  const [gstRate, setGstRate] = useState<number>(initialReceipt?.gstRate ?? 18);
-  const [generalTaxRate, setGeneralTaxRate] = useState<number>(initialReceipt?.generalTaxRate ?? 0);
-
-  // Payment State
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialReceipt?.paymentMethod || 'upi');
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(initialReceipt?.paymentStatus || 'paid');
-  const [amountPaid, setAmountPaid] = useState<number>(initialReceipt?.amountPaid || 0);
-
-  // Notes & Terms
-  const [notes, setNotes] = useState<string>(initialReceipt?.notes || 'Thank you for your business!');
-  const [terms, setTerms] = useState<string>(
-    initialReceipt?.terms || 'Payment due within 15 days. For inquiries, please email billing support.'
-  );
-
-  // Validation state
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // Initialize from storage settings if creating fresh receipt
   useEffect(() => {
     StorageService.initialize();
     setSavedCustomers(StorageService.getCustomers());
+  }, []);
 
-    if (!initialReceipt) {
-      const now = new Date();
-      setDate(now.toISOString().split('T')[0]);
-      setTime(now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }));
-      setReceiptId(`rec-${Date.now()}`);
-
-      const settings = StorageService.getSettings();
-      setReceiptNumber(StorageService.getNextReceiptNumber());
-      setCurrency(settings.defaultCurrency || 'INR');
-      setTemplate(settings.defaultTemplate || 'modern');
-      setSize(settings.defaultSize || 'a4');
-      setPaymentMethod(settings.defaultPaymentMethod || 'upi');
-
-      if (settings.useSavedBusinessByDefault && settings.savedBusiness) {
-        const b = settings.savedBusiness;
-        setBusinessName(b.name || '');
-        setBusinessLogo(b.logo || '');
-        setBusinessPhone(b.phone || '');
-        setBusinessEmail(b.email || '');
-        setBusinessWebsite(b.website || '');
-        setBusinessAddress(b.address || '');
-        setBusinessCity(b.city || '');
-        setBusinessState(b.state || '');
-        setBusinessPostalCode(b.postalCode || '');
-        setBusinessGstin(b.gstin || '');
-      }
-
-      if (settings.defaultNotes) setNotes(settings.defaultNotes);
-      if (settings.defaultTerms) setTerms(settings.defaultTerms);
-    }
-  }, [initialReceipt]);
-
-  // Maintain latest callback reference without re-triggering calculation effect
-  const onReceiptChangeRef = useRef(onReceiptChange);
-  useEffect(() => {
-    onReceiptChangeRef.current = onReceiptChange;
-  }, [onReceiptChange]);
-
-  // Compute receipt calculations on any change and broadcast to preview parent
-  useEffect(() => {
-    const calc = calculateReceiptTotals({
-      items,
-      discountType,
-      discountValue,
-      isGstEnabled,
-      gstMode,
-      gstType,
-      gstRate,
-      generalTaxRate,
-      amountPaid,
-      paymentStatus,
+  const updateField = <K extends keyof Receipt>(field: K, value: Receipt[K]) => {
+    onChange({
+      ...receipt,
+      [field]: value,
     });
+  };
 
-    const receiptData: Receipt = {
-      id: receiptId,
-      receiptNumber: receiptNumber || 'REC-0001',
-      date,
-      time,
-      currency,
+  const updateBusiness = (field: keyof Receipt['business'], value: string) => {
+    onChange({
+      ...receipt,
       business: {
-        name: businessName,
-        logo: businessLogo,
-        phone: businessPhone,
-        email: businessEmail,
-        website: businessWebsite,
-        address: businessAddress,
-        city: businessCity,
-        state: businessState,
-        postalCode: businessPostalCode,
-        gstin: businessGstin,
+        ...receipt.business,
+        [field]: value,
       },
-      customer: {
-        id: customerId,
-        name: customerName,
-        phone: customerPhone,
-        email: customerEmail,
-        address: customerAddress,
-        city: customerCity,
-        state: customerState,
-        postalCode: customerPostalCode,
-      },
-      items: calc.items,
-      subtotal: calc.subtotal,
-      discountType,
-      discountValue,
-      discountAmount: calc.discountAmount,
-      taxableAmount: calc.taxableAmount,
-      isGstEnabled,
-      gstMode,
-      gstType,
-      gstRate,
-      cgstRate: calc.cgstRate,
-      sgstRate: calc.sgstRate,
-      igstRate: calc.igstRate,
-      cgstAmount: calc.cgstAmount,
-      sgstAmount: calc.sgstAmount,
-      igstAmount: calc.igstAmount,
-      generalTaxRate,
-      generalTaxAmount: calc.generalTaxAmount,
-      totalTaxAmount: calc.totalTaxAmount,
-      grandTotal: calc.grandTotal,
-      paymentMethod,
-      paymentStatus,
-      amountPaid: calc.amountPaid,
-      balanceDue: calc.balanceDue,
-      notes,
-      terms,
-      template,
-      size,
-      createdAt: initialReceipt?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    });
+  };
 
-    onReceiptChangeRef.current(receiptData);
-  }, [
-    receiptId,
-    receiptNumber,
-    date,
-    time,
-    currency,
-    businessName,
-    businessLogo,
-    businessPhone,
-    businessEmail,
-    businessWebsite,
-    businessAddress,
-    businessCity,
-    businessState,
-    businessPostalCode,
-    businessGstin,
-    customerId,
-    customerName,
-    customerPhone,
-    customerEmail,
-    customerAddress,
-    customerCity,
-    customerState,
-    customerPostalCode,
-    items,
-    discountType,
-    discountValue,
-    isGstEnabled,
-    gstMode,
-    gstType,
-    gstRate,
-    generalTaxRate,
-    paymentMethod,
-    paymentStatus,
-    amountPaid,
-    notes,
-    terms,
-    template,
-    size,
-    initialReceipt?.createdAt,
-  ]);
+  const updateCustomer = (field: keyof Receipt['customer'], value: string | undefined) => {
+    onChange({
+      ...receipt,
+      customer: {
+        ...receipt.customer,
+        [field]: value,
+      },
+    });
+  };
 
   // Load Saved Business Profile
   const handleLoadSavedBusiness = () => {
     const settings = StorageService.getSettings();
     if (settings.savedBusiness) {
       const b = settings.savedBusiness;
-      setBusinessName(b.name || '');
-      setBusinessLogo(b.logo || '');
-      setBusinessPhone(b.phone || '');
-      setBusinessEmail(b.email || '');
-      setBusinessWebsite(b.website || '');
-      setBusinessAddress(b.address || '');
-      setBusinessCity(b.city || '');
-      setBusinessState(b.state || '');
-      setBusinessPostalCode(b.postalCode || '');
-      setBusinessGstin(b.gstin || '');
+      onChange({
+        ...receipt,
+        business: {
+          name: b.name || '',
+          logo: b.logo || '',
+          phone: b.phone || '',
+          email: b.email || '',
+          website: b.website || '',
+          address: b.address || '',
+          city: b.city || '',
+          state: b.state || '',
+          postalCode: b.postalCode || '',
+          gstin: b.gstin || '',
+        },
+      });
       info('Loaded default business profile.');
     }
   };
@@ -320,7 +125,7 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
 
     const reader = new FileReader();
     reader.onload = () => {
-      setBusinessLogo(reader.result as string);
+      updateBusiness('logo', reader.result as string);
       info('Business logo uploaded.');
     };
     reader.readAsDataURL(file);
@@ -328,187 +133,67 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
 
   // Select Customer from Saved list
   const handleSelectCustomer = (cust: Customer) => {
-    setCustomerId(cust.id);
-    setCustomerName(cust.name);
-    setCustomerPhone(cust.phone || '');
-    setCustomerEmail(cust.email || '');
-    setCustomerAddress(cust.address || '');
-    setCustomerCity(cust.city || '');
-    setCustomerState(cust.state || '');
-    setCustomerPostalCode(cust.postalCode || '');
+    onChange({
+      ...receipt,
+      customer: {
+        id: cust.id,
+        name: cust.name,
+        phone: cust.phone || '',
+        email: cust.email || '',
+        address: cust.address || '',
+        city: cust.city || '',
+        state: cust.state || '',
+        postalCode: cust.postalCode || '',
+      },
+    });
     setShowCustomerDropdown(false);
     info(`Selected client: ${cust.name}`);
   };
 
   // Add Item
   const handleAddItem = () => {
-    setItems([
-      ...items,
-      {
-        id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        name: '',
-        description: '',
-        quantity: 1,
-        unitPrice: 0,
-        taxRate: isGstEnabled ? gstRate : generalTaxRate,
-        total: 0,
-      },
-    ]);
+    const newItem: ReceiptItem = {
+      id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      name: '',
+      description: '',
+      quantity: 1,
+      unitPrice: 0,
+      taxRate: receipt.isGstEnabled ? receipt.gstRate : receipt.generalTaxRate,
+      total: 0,
+    };
+    updateField('items', [...receipt.items, newItem]);
   };
 
   // Duplicate Item
   const handleDuplicateItem = (index: number) => {
-    const target = items[index];
+    const target = receipt.items[index];
     const duplicated: ReceiptItem = {
       ...target,
       id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
     };
-    const updated = [...items];
+    const updated = [...receipt.items];
     updated.splice(index + 1, 0, duplicated);
-    setItems(updated);
+    updateField('items', updated);
     info(`Duplicated "${target.name || 'item'}"`);
   };
 
   // Remove Item
   const handleRemoveItem = (index: number) => {
-    if (items.length <= 1) {
+    if (receipt.items.length <= 1) {
       showError('Receipt must contain at least one item.');
       return;
     }
-    setItems(items.filter((_, i) => i !== index));
+    updateField(
+      'items',
+      receipt.items.filter((_, i) => i !== index)
+    );
   };
 
   // Update Item field
   const handleUpdateItem = (index: number, field: keyof ReceiptItem, value: any) => {
-    const updated = [...items];
+    const updated = [...receipt.items];
     updated[index] = { ...updated[index], [field]: value };
-    setItems(updated);
-  };
-
-  // Form Validation
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    if (!businessName.trim()) {
-      newErrors.businessName = 'Business name is required.';
-    }
-
-    if (!receiptNumber.trim()) {
-      newErrors.receiptNumber = 'Receipt number is required.';
-    }
-
-    if (!date) {
-      newErrors.date = 'Receipt date is required.';
-    }
-
-    if (items.length === 0) {
-      newErrors.items = 'Please add at least one line item.';
-    } else {
-      const hasEmptyName = items.some((item) => !item.name.trim());
-      if (hasEmptyName) {
-        newErrors.items = 'All items must have a valid name or title.';
-      }
-      const hasInvalidQty = items.some((item) => isNaN(item.quantity) || item.quantity <= 0);
-      if (hasInvalidQty) {
-        newErrors.items = 'Item quantity must be greater than 0.';
-      }
-      const hasNegativePrice = items.some((item) => isNaN(item.unitPrice) || item.unitPrice < 0);
-      if (hasNegativePrice) {
-        newErrors.items = 'Item unit price cannot be negative.';
-      }
-    }
-
-    if (discountValue < 0) {
-      newErrors.discount = 'Discount cannot be negative.';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  // Save Receipt Handler
-  const handleSaveReceipt = () => {
-    if (!validateForm()) {
-      showError('Please fix the validation errors before saving.');
-      return;
-    }
-
-    const calc = calculateReceiptTotals({
-      items,
-      discountType,
-      discountValue,
-      isGstEnabled,
-      gstMode,
-      gstType,
-      gstRate,
-      generalTaxRate,
-      amountPaid,
-      paymentStatus,
-    });
-
-    const receiptData: Receipt = {
-      id: receiptId,
-      receiptNumber: receiptNumber.trim(),
-      date,
-      time,
-      currency,
-      business: {
-        name: businessName.trim(),
-        logo: businessLogo,
-        phone: businessPhone.trim(),
-        email: businessEmail.trim(),
-        website: businessWebsite.trim(),
-        address: businessAddress.trim(),
-        city: businessCity.trim(),
-        state: businessState.trim(),
-        postalCode: businessPostalCode.trim(),
-        gstin: businessGstin.trim(),
-      },
-      customer: {
-        id: customerId,
-        name: customerName.trim(),
-        phone: customerPhone.trim(),
-        email: customerEmail.trim(),
-        address: customerAddress.trim(),
-        city: customerCity.trim(),
-        state: customerState.trim(),
-        postalCode: customerPostalCode.trim(),
-      },
-      items: calc.items,
-      subtotal: calc.subtotal,
-      discountType,
-      discountValue,
-      discountAmount: calc.discountAmount,
-      taxableAmount: calc.taxableAmount,
-      isGstEnabled,
-      gstMode,
-      gstType,
-      gstRate,
-      cgstRate: calc.cgstRate,
-      sgstRate: calc.sgstRate,
-      igstRate: calc.igstRate,
-      cgstAmount: calc.cgstAmount,
-      sgstAmount: calc.sgstAmount,
-      igstAmount: calc.igstAmount,
-      generalTaxRate,
-      generalTaxAmount: calc.generalTaxAmount,
-      totalTaxAmount: calc.totalTaxAmount,
-      grandTotal: calc.grandTotal,
-      paymentMethod,
-      paymentStatus,
-      amountPaid: calc.amountPaid,
-      balanceDue: calc.balanceDue,
-      notes: notes.trim(),
-      terms: terms.trim(),
-      template,
-      size,
-      createdAt: initialReceipt?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    StorageService.saveReceipt(receiptData);
-    success('Receipt saved successfully!');
-    router.push('/receipts');
+    updateField('items', updated);
   };
 
   const handlePrint = () => {
@@ -536,9 +221,9 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setTemplate(t)}
+                  onClick={() => updateField('template', t)}
                   className={`px-3 py-1 text-xs font-bold rounded-lg capitalize transition-all ${
-                    template === t
+                    receipt.template === t
                       ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-md'
                       : 'text-slate-400 hover:text-white'
                   }`}
@@ -556,9 +241,9 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
             <div className="flex items-center gap-1 bg-[#181329] p-1 rounded-xl border border-[#3b2d5f]">
               <button
                 type="button"
-                onClick={() => setSize('a4')}
+                onClick={() => updateField('size', 'a4')}
                 className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                  size === 'a4'
+                  receipt.size === 'a4'
                     ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-white'
                 }`}
@@ -567,9 +252,9 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
               </button>
               <button
                 type="button"
-                onClick={() => setSize('thermal')}
+                onClick={() => updateField('size', 'thermal')}
                 className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                  size === 'thermal'
+                  receipt.size === 'thermal'
                     ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-white'
                 }`}
@@ -584,7 +269,7 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
           <Button variant="outline" size="sm" onClick={handlePrint} icon={<Printer className="w-4 h-4" />}>
             Print / PDF
           </Button>
-          <Button variant="primary" size="sm" onClick={handleSaveReceipt} icon={<Save className="w-4 h-4" />}>
+          <Button variant="primary" size="sm" onClick={onSave} icon={<Save className="w-4 h-4" />}>
             Save Receipt
           </Button>
         </div>
@@ -609,17 +294,17 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
 
         {/* Business Logo Upload */}
         <div className="flex items-center gap-4">
-          {businessLogo ? (
+          {receipt.business.logo ? (
             <div className="relative group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={businessLogo}
+                src={receipt.business.logo}
                 alt="Business Logo"
                 className="h-16 w-28 object-contain rounded-xl border border-[#3b2d5f] bg-[#181329] p-1"
               />
               <button
                 type="button"
-                onClick={() => setBusinessLogo('')}
+                onClick={() => updateBusiness('logo', '')}
                 className="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full p-1 shadow-md hover:bg-rose-700 transition-colors"
                 title="Remove logo"
               >
@@ -652,29 +337,29 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
           <Input
             label="Business Name"
             placeholder="e.g. Acme Creative Studio"
-            value={businessName}
-            onChange={(e) => setBusinessName(e.target.value)}
+            value={receipt.business.name}
+            onChange={(e) => updateBusiness('name', e.target.value)}
             error={errors.businessName}
             required
           />
           <Input
             label="GSTIN / Tax ID"
             placeholder="e.g. 29ABCDE1234F1Z5"
-            value={businessGstin}
-            onChange={(e) => setBusinessGstin(e.target.value)}
+            value={receipt.business.gstin || ''}
+            onChange={(e) => updateBusiness('gstin', e.target.value)}
           />
           <Input
             label="Phone Number"
             placeholder="e.g. +91 98765 43210"
-            value={businessPhone}
-            onChange={(e) => setBusinessPhone(e.target.value)}
+            value={receipt.business.phone || ''}
+            onChange={(e) => updateBusiness('phone', e.target.value)}
           />
           <Input
             label="Email Address"
             placeholder="e.g. billing@acme.com"
             type="email"
-            value={businessEmail}
-            onChange={(e) => setBusinessEmail(e.target.value)}
+            value={receipt.business.email || ''}
+            onChange={(e) => updateBusiness('email', e.target.value)}
           />
         </div>
 
@@ -683,27 +368,27 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
             <Input
               label="Street Address"
               placeholder="e.g. 402 Silicon Heights, MG Road"
-              value={businessAddress}
-              onChange={(e) => setBusinessAddress(e.target.value)}
+              value={receipt.business.address || ''}
+              onChange={(e) => updateBusiness('address', e.target.value)}
             />
           </div>
           <Input
             label="City"
             placeholder="e.g. Bengaluru"
-            value={businessCity}
-            onChange={(e) => setBusinessCity(e.target.value)}
+            value={receipt.business.city || ''}
+            onChange={(e) => updateBusiness('city', e.target.value)}
           />
           <Input
             label="State / Province"
             placeholder="e.g. Karnataka"
-            value={businessState}
-            onChange={(e) => setBusinessState(e.target.value)}
+            value={receipt.business.state || ''}
+            onChange={(e) => updateBusiness('state', e.target.value)}
           />
           <Input
             label="Postal / Zip Code"
             placeholder="e.g. 560001"
-            value={businessPostalCode}
-            onChange={(e) => setBusinessPostalCode(e.target.value)}
+            value={receipt.business.postalCode || ''}
+            onChange={(e) => updateBusiness('postalCode', e.target.value)}
           />
         </div>
       </div>
@@ -763,21 +448,21 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
           <Input
             label="Customer Name"
             placeholder="e.g. John Doe / Acme Corp"
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
+            value={receipt.customer.name}
+            onChange={(e) => updateCustomer('name', e.target.value)}
           />
           <Input
             label="Phone Number"
             placeholder="e.g. +91 91234 56789"
-            value={customerPhone}
-            onChange={(e) => setCustomerPhone(e.target.value)}
+            value={receipt.customer.phone || ''}
+            onChange={(e) => updateCustomer('phone', e.target.value)}
           />
           <Input
             label="Email Address"
             placeholder="e.g. client@example.com"
             type="email"
-            value={customerEmail}
-            onChange={(e) => setCustomerEmail(e.target.value)}
+            value={receipt.customer.email || ''}
+            onChange={(e) => updateCustomer('email', e.target.value)}
           />
         </div>
 
@@ -786,27 +471,27 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
             <Input
               label="Billing Address (Optional)"
               placeholder="e.g. 101 Marine Drive"
-              value={customerAddress}
-              onChange={(e) => setCustomerAddress(e.target.value)}
+              value={receipt.customer.address || ''}
+              onChange={(e) => updateCustomer('address', e.target.value)}
             />
           </div>
           <Input
             label="City"
             placeholder="e.g. Mumbai"
-            value={customerCity}
-            onChange={(e) => setCustomerCity(e.target.value)}
+            value={receipt.customer.city || ''}
+            onChange={(e) => updateCustomer('city', e.target.value)}
           />
           <Input
             label="State"
             placeholder="e.g. Maharashtra"
-            value={customerState}
-            onChange={(e) => setCustomerState(e.target.value)}
+            value={receipt.customer.state || ''}
+            onChange={(e) => updateCustomer('state', e.target.value)}
           />
           <Input
             label="Postal Code"
             placeholder="e.g. 400020"
-            value={customerPostalCode}
-            onChange={(e) => setCustomerPostalCode(e.target.value)}
+            value={receipt.customer.postalCode || ''}
+            onChange={(e) => updateCustomer('postalCode', e.target.value)}
           />
         </div>
       </div>
@@ -822,29 +507,29 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
           <Input
             label="Receipt Number"
             placeholder="e.g. REC-1001"
-            value={receiptNumber}
-            onChange={(e) => setReceiptNumber(e.target.value)}
+            value={receipt.receiptNumber}
+            onChange={(e) => updateField('receiptNumber', e.target.value)}
             error={errors.receiptNumber}
             required
           />
           <Input
             label="Date"
             type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+            value={receipt.date}
+            onChange={(e) => updateField('date', e.target.value)}
             error={errors.date}
             required
           />
           <Input
             label="Time"
             type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
+            value={receipt.time}
+            onChange={(e) => updateField('time', e.target.value)}
           />
           <Select
             label="Currency"
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
+            value={receipt.currency}
+            onChange={(e) => updateField('currency', e.target.value as CurrencyCode)}
             options={Object.values(CURRENCIES).map((c) => ({
               value: c.code,
               label: c.label,
@@ -858,7 +543,7 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
         <div className="flex items-center justify-between border-b border-[#29203f] pb-3">
           <div className="flex items-center gap-2 text-white font-bold text-sm">
             <FileText className="w-4 h-4 text-violet-400" />
-            4. Line Items & Services ({items.length})
+            4. Line Items & Services ({receipt.items.length})
           </div>
           <Button size="sm" variant="secondary" onClick={handleAddItem} icon={<Plus className="w-3.5 h-3.5" />}>
             Add Item
@@ -872,7 +557,7 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
         )}
 
         <div className="space-y-3">
-          {items.map((item, index) => (
+          {receipt.items.map((item, index) => (
             <div
               key={item.id || index}
               className="p-4 rounded-xl bg-[#181329] border border-[#3b2d5f] space-y-3 hover:border-violet-500/50 transition-colors"
@@ -922,7 +607,7 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
                 {/* Row Total & Actions */}
                 <div className="md:col-span-2 flex items-center justify-between md:justify-end gap-2 pt-2 md:pt-1">
                   <span className="text-xs font-black text-violet-300 font-mono">
-                    {CURRENCIES[currency]?.symbol || '₹'} {(item.quantity * item.unitPrice).toFixed(2)}
+                    {CURRENCIES[receipt.currency]?.symbol || '₹'} {(item.quantity * item.unitPrice).toFixed(2)}
                   </span>
                   <div className="flex items-center gap-1">
                     <button
@@ -968,9 +653,9 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
               <div className="flex items-center gap-1 bg-[#100c1d] p-0.5 rounded-lg border border-[#2d2448] text-xs">
                 <button
                   type="button"
-                  onClick={() => setDiscountType('percentage')}
+                  onClick={() => updateField('discountType', 'percentage')}
                   className={`px-2.5 py-1 rounded font-bold ${
-                    discountType === 'percentage'
+                    receipt.discountType === 'percentage'
                       ? 'bg-violet-600 text-white shadow'
                       : 'text-slate-400 hover:text-white'
                   }`}
@@ -979,9 +664,9 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDiscountType('fixed')}
+                  onClick={() => updateField('discountType', 'fixed')}
                   className={`px-2.5 py-1 rounded font-bold ${
-                    discountType === 'fixed'
+                    receipt.discountType === 'fixed'
                       ? 'bg-violet-600 text-white shadow'
                       : 'text-slate-400 hover:text-white'
                   }`}
@@ -995,9 +680,9 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
               type="number"
               min="0"
               step="any"
-              placeholder={discountType === 'percentage' ? 'e.g. 10 (%)' : 'e.g. 500 (Fixed)'}
-              value={discountValue}
-              onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
+              placeholder={receipt.discountType === 'percentage' ? 'e.g. 10 (%)' : 'e.g. 500 (Fixed)'}
+              value={receipt.discountValue}
+              onChange={(e) => updateField('discountValue', parseFloat(e.target.value) || 0)}
               error={errors.discount}
             />
           </div>
@@ -1008,24 +693,24 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
               <label className="text-xs font-bold text-violet-200 uppercase tracking-wider">GST / Tax Mode</label>
               <button
                 type="button"
-                onClick={() => setIsGstEnabled(!isGstEnabled)}
+                onClick={() => updateField('isGstEnabled', !receipt.isGstEnabled)}
                 className={`text-xs px-3 py-1 rounded-full font-bold transition-all ${
-                  isGstEnabled
+                  receipt.isGstEnabled
                     ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40 shadow-sm'
                     : 'bg-[#100c1d] text-slate-400 border border-[#2d2448]'
                 }`}
               >
-                {isGstEnabled ? '✓ GST Mode Active' : 'Standard Tax Mode'}
+                {receipt.isGstEnabled ? '✓ GST Mode Active' : 'Standard Tax Mode'}
               </button>
             </div>
 
-            {isGstEnabled ? (
+            {receipt.isGstEnabled ? (
               <div className="space-y-2.5">
                 <div className="grid grid-cols-2 gap-2">
                   <Select
                     label="GST Rate (%)"
-                    value={gstRate}
-                    onChange={(e) => setGstRate(parseFloat(e.target.value) || 0)}
+                    value={receipt.gstRate}
+                    onChange={(e) => updateField('gstRate', parseFloat(e.target.value) || 0)}
                     options={[
                       { value: 0, label: '0% (Exempt)' },
                       { value: 5, label: '5% GST' },
@@ -1036,8 +721,8 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
                   />
                   <Select
                     label="Calculation Mode"
-                    value={gstMode}
-                    onChange={(e) => setGstMode(e.target.value as GstCalculationMode)}
+                    value={receipt.gstMode}
+                    onChange={(e) => updateField('gstMode', e.target.value as GstCalculationMode)}
                     options={[
                       { value: 'exclusive', label: 'Exclusive (Add GST)' },
                       { value: 'inclusive', label: 'Inclusive (Inside Total)' },
@@ -1050,8 +735,8 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
                     <input
                       type="radio"
                       name="gstType"
-                      checked={gstType === 'cgst_sgst'}
-                      onChange={() => setGstType('cgst_sgst')}
+                      checked={receipt.gstType === 'cgst_sgst'}
+                      onChange={() => updateField('gstType', 'cgst_sgst')}
                       className="text-violet-600 focus:ring-violet-500"
                     />
                     <span>CGST + SGST (Intra-state)</span>
@@ -1060,8 +745,8 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
                     <input
                       type="radio"
                       name="gstType"
-                      checked={gstType === 'igst'}
-                      onChange={() => setGstType('igst')}
+                      checked={receipt.gstType === 'igst'}
+                      onChange={() => updateField('gstType', 'igst')}
                       className="text-violet-600 focus:ring-violet-500"
                     />
                     <span>IGST (Inter-state)</span>
@@ -1077,8 +762,8 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
                   max="100"
                   step="any"
                   placeholder="e.g. 10 (%)"
-                  value={generalTaxRate}
-                  onChange={(e) => setGeneralTaxRate(parseFloat(e.target.value) || 0)}
+                  value={receipt.generalTaxRate}
+                  onChange={(e) => updateField('generalTaxRate', parseFloat(e.target.value) || 0)}
                 />
               </div>
             )}
@@ -1096,8 +781,8 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Select
             label="Payment Method"
-            value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+            value={receipt.paymentMethod}
+            onChange={(e) => updateField('paymentMethod', e.target.value as PaymentMethod)}
             options={PAYMENT_METHODS.map((m) => ({
               value: m.id,
               label: m.label,
@@ -1106,22 +791,22 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
 
           <Select
             label="Payment Status"
-            value={paymentStatus}
-            onChange={(e) => setPaymentStatus(e.target.value as PaymentStatus)}
+            value={receipt.paymentStatus}
+            onChange={(e) => updateField('paymentStatus', e.target.value as PaymentStatus)}
             options={PAYMENT_STATUSES.map((s) => ({
               value: s.id,
               label: s.label,
             }))}
           />
 
-          {paymentStatus === 'partially_paid' && (
+          {receipt.paymentStatus === 'partially_paid' && (
             <Input
               label="Amount Paid"
               type="number"
               min="0"
               step="any"
-              value={amountPaid}
-              onChange={(e) => setAmountPaid(parseFloat(e.target.value) || 0)}
+              value={receipt.amountPaid}
+              onChange={(e) => updateField('amountPaid', parseFloat(e.target.value) || 0)}
             />
           )}
         </div>
@@ -1141,8 +826,8 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
             </label>
             <textarea
               rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              value={receipt.notes || ''}
+              onChange={(e) => updateField('notes', e.target.value)}
               placeholder="e.g. Thank you for your business!"
               className="w-full rounded-xl border border-[#2d2448] bg-[#120e20] text-white p-3 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500/20"
             />
@@ -1154,8 +839,8 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
             </label>
             <textarea
               rows={3}
-              value={terms}
-              onChange={(e) => setTerms(e.target.value)}
+              value={receipt.terms || ''}
+              onChange={(e) => updateField('terms', e.target.value)}
               placeholder="e.g. Payment due within 15 days."
               className="w-full rounded-xl border border-[#2d2448] bg-[#120e20] text-white p-3 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500/20"
             />
@@ -1173,7 +858,7 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
           <Button variant="secondary" size="md" onClick={handlePrint} icon={<Printer className="w-4 h-4" />}>
             Print / PDF
           </Button>
-          <Button variant="accent" size="md" onClick={handleSaveReceipt} icon={<Save className="w-4 h-4" />}>
+          <Button variant="accent" size="md" onClick={onSave} icon={<Save className="w-4 h-4" />}>
             Save Receipt
           </Button>
         </div>
