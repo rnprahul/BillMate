@@ -43,8 +43,8 @@ const SAMPLE_CUSTOMERS: Customer[] = [
     postalCode: '560038',
     totalSpent: 42480,
     receiptCount: 2,
-    createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
-    updatedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+    createdAt: '2026-08-20T10:00:00.000Z',
+    updatedAt: '2026-08-28T14:30:00.000Z',
   },
   {
     id: 'cust-2',
@@ -57,8 +57,8 @@ const SAMPLE_CUSTOMERS: Customer[] = [
     postalCode: '400051',
     totalSpent: 88500,
     receiptCount: 1,
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-    updatedAt: new Date(Date.now() - 5 * 86400000).toISOString(),
+    createdAt: '2026-08-25T11:00:00.000Z',
+    updatedAt: '2026-08-25T11:00:00.000Z',
   },
   {
     id: 'cust-3',
@@ -71,8 +71,8 @@ const SAMPLE_CUSTOMERS: Customer[] = [
     postalCode: '94107',
     totalSpent: 0,
     receiptCount: 0,
-    createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 86400000).toISOString(),
+    createdAt: '2026-08-29T09:00:00.000Z',
+    updatedAt: '2026-08-29T09:00:00.000Z',
   },
 ];
 
@@ -80,7 +80,7 @@ const SAMPLE_RECEIPTS: Receipt[] = [
   {
     id: 'rec-1001',
     receiptNumber: 'REC-1001',
-    date: new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0],
+    date: '2026-08-25',
     time: '14:30',
     currency: 'INR',
     business: {
@@ -151,13 +151,13 @@ const SAMPLE_RECEIPTS: Receipt[] = [
     terms: 'All deliverables are covered under warranty for 30 days.',
     template: 'modern',
     size: 'a4',
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-    updatedAt: new Date(Date.now() - 5 * 86400000).toISOString(),
+    createdAt: '2026-08-25T14:30:00.000Z',
+    updatedAt: '2026-08-25T14:30:00.000Z',
   },
   {
     id: 'rec-1002',
     receiptNumber: 'REC-1002',
-    date: new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0],
+    date: '2026-08-28',
     time: '11:15',
     currency: 'INR',
     business: {
@@ -219,13 +219,13 @@ const SAMPLE_RECEIPTS: Receipt[] = [
     terms: 'Support included for 14 days.',
     template: 'classic',
     size: 'a4',
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-    updatedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+    createdAt: '2026-08-28T11:15:00.000Z',
+    updatedAt: '2026-08-28T11:15:00.000Z',
   },
   {
     id: 'rec-1003',
     receiptNumber: 'REC-1003',
-    date: new Date().toISOString().split('T')[0],
+    date: '2026-08-30',
     time: '16:45',
     currency: 'INR',
     business: {
@@ -291,8 +291,8 @@ const SAMPLE_RECEIPTS: Receipt[] = [
     terms: 'Standard hardware return policy within 7 days.',
     template: 'minimal',
     size: 'thermal',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: '2026-08-30T16:45:00.000Z',
+    updatedAt: '2026-08-30T16:45:00.000Z',
   },
 ];
 
@@ -436,7 +436,6 @@ export const StorageService = {
     const phone = receipt.customer.phone?.trim();
     const email = receipt.customer.email?.trim().toLowerCase();
 
-    // Check if customer exists by ID, or email, or phone, or name
     let matchedCustomer = customers.find((c) => {
       if (receipt.customer.id && c.id === receipt.customer.id) return true;
       if (email && c.email?.toLowerCase() === email) return true;
@@ -445,7 +444,6 @@ export const StorageService = {
       return false;
     });
 
-    // Recompute total spent and count for all receipts
     const allReceipts = this.getReceipts();
     const customerReceipts = allReceipts.filter((r) => {
       if (matchedCustomer && r.customer?.id === matchedCustomer.id) return true;

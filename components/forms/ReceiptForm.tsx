@@ -58,13 +58,10 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
   // Form State
-  const [receiptId, setReceiptId] = useState<string>(initialReceipt?.id || `rec-${Date.now()}`);
-  const [receiptNumber, setReceiptNumber] = useState<string>(initialReceipt?.receiptNumber || '');
-  const [date, setDate] = useState<string>(initialReceipt?.date || new Date().toISOString().split('T')[0]);
-  const [time, setTime] = useState<string>(
-    initialReceipt?.time ||
-      new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
-  );
+  const [receiptId, setReceiptId] = useState<string>(initialReceipt?.id || 'rec-new');
+  const [receiptNumber, setReceiptNumber] = useState<string>(initialReceipt?.receiptNumber || 'REC-1001');
+  const [date, setDate] = useState<string>(initialReceipt?.date || '2026-08-30');
+  const [time, setTime] = useState<string>(initialReceipt?.time || '12:00');
   const [currency, setCurrency] = useState<CurrencyCode>(initialReceipt?.currency || 'INR');
   const [template, setTemplate] = useState<ReceiptTemplate>(initialReceipt?.template || 'modern');
   const [size, setSize] = useState<ReceiptSize>(initialReceipt?.size || 'a4');
@@ -95,7 +92,7 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
   const [items, setItems] = useState<ReceiptItem[]>(
     initialReceipt?.items || [
       {
-        id: `item-${Date.now()}-1`,
+        id: 'item-default-1',
         name: 'Professional Consulting Services',
         description: 'Design & technical implementation consulting',
         quantity: 1,
@@ -137,6 +134,11 @@ export function ReceiptForm({ initialReceipt, onReceiptChange }: ReceiptFormProp
     setSavedCustomers(StorageService.getCustomers());
 
     if (!initialReceipt) {
+      const now = new Date();
+      setDate(now.toISOString().split('T')[0]);
+      setTime(now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }));
+      setReceiptId(`rec-${Date.now()}`);
+
       const settings = StorageService.getSettings();
       setReceiptNumber(StorageService.getNextReceiptNumber());
       setCurrency(settings.defaultCurrency || 'INR');
